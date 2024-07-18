@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHA-256 Hasher</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+</head>
+<body>
+    <h1>SHA-256 Hasher</h1>
+    <label for="mobileNumber">Enter Mobile Number:</label>
+    <input type="text" id="mobileNumber" name="mobileNumber">
+    <button onclick="hashSingleNumber()">Hash Number</button>
+    <h2>Hashed Number:</h2>
+    <p id="singleHashedNumber"></p>
+    
+    <hr>
+    
+    <h1>Upload CSV File</h1>
+    <input type="file" id="fileInput" accept=".csv">
+    <button onclick="hashNumbersFromFile()">Hash Numbers from File</button>
+    <h2>Hashed Numbers:</h2>
+    <ul id="hashedNumbersList"></ul>
+
+    <h1>Upload CSV File of Words</h1>
+    <input type="file" id="wordsFileInput" accept=".csv">
+    <button onclick="hashWordsFromFile()">Hash Words from File and Download CSV</button>
+
+    <script>
+        async function hashSingleNumber() {
+            const inputNumber = document.getElementById('mobileNumber').value;
+            const hashHex = await hashNumber(inputNumber);
+            document.getElementById('singleHashedNumber').innerText = hashHex;
+        }
+
+        async function hashNumber(number) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(number);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function hashNumbersFromFile() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                alert('Please select a CSV file.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const hashedNumbers = [];
+            const hashedNumbersList = document.getElementById('hashedNumbersList');
+            hashedNumbersList.innerHTML = '';
+
+            Papa.parse(file, {
+                header: false,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                step: function(row, parser) {
+                    parser.pause();
+                    const number = row.data[0].toString().trim();
+                    if (number) {
+                        hashNumber(number).then(hashHex => {
+                            hashedNumbers.push({ number, hashHex });
+
+                            const listItem = document.createElement('li');
+                            listItem.innerText = `${number}: ${hashHex}`;
+                            hashedNumbersList.appendChild(listItem);
+
+                            parser.resume();
+                        });
+                    } else {
+                        parser.resume();
+                    }
+                },
+                complete: function() {
+                    const csvContent = "data:text/csv;charset=utf-8,"
+                        + hashedNumbers.map(e => `${e.number},${e.hashHex}`).join('\n');
+
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", "hashed_numbers.csv");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            });
+        }
+
+        function hashWordsFromFile() {
+            const fileInput = document.getElementById('wordsFileInput');
+            if (!fileInput.files.length) {
+                alert('Please select a CSV file.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const results = [];
+
+            Papa.parse(file, {
+                header: false,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                step: function(row, parser) {
+                    parser.pause();
+                    const word = row.data[0].toString().trim();
+                    if (word) {
+                        hashNumber(word).then(hashHex => {
+                            results.push({ word, hashHex });
+                            parser.resume();
+                        });
+                    } else {
+                        parser.resume();
+                    }
+                },
+                complete: function() {
+                    const csvContent = "data:text/csv;charset=utf-8,"
+                        + results.map(e => `${e.word},${e.hashHex}`).join('\n');
+
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", "hashed_words.csv");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
