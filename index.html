@@ -4,130 +4,194 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SHA-256 Hasher</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 </head>
 <body>
-    <h1>SHA-256 Hasher</h1>
-    <label for="mobileNumber">Enter Mobile Number:</label>
-    <input type="text" id="mobileNumber" name="mobileNumber">
-    <button onclick="hashSingleNumber()">Hash Number</button>
-    <h2>Hashed Number:</h2>
-    <p id="singleHashedNumber"></p>
-    
-    <hr>
-    
-    <h1>Upload CSV File</h1>
+    <h1>SHA-256 Hasher for CSV</h1>
     <input type="file" id="fileInput" accept=".csv">
-    <button onclick="hashNumbersFromFile()">Hash Numbers from File</button>
-    <h2>Hashed Numbers:</h2>
-    <ul id="hashedNumbersList"></ul>
+    <button onclick="hashCSV()">Hash CSV</button>
 
-    <h1>Upload CSV File of Words</h1>
-    <input type="file" id="wordsFileInput" accept=".csv">
-    <button onclick="hashWordsFromFile()">Hash Words from File and Download CSV</button>
+    <a id="downloadLink" style="display: none;"></a>
 
     <script>
-        async function hashSingleNumber() {
-            const inputNumber = document.getElementById('mobileNumber').value;
-            const hashHex = await hashNumber(inputNumber);
-            document.getElementById('singleHashedNumber').innerText = hashHex;
-        }
+        var sha256 = function sha256(ascii) {
+            function rightRotate(value, amount) {
+                return (value >>> amount) | (value << (32 - amount));
+            };
+            
+            var mathPow = Math.pow;
+            var maxWord = mathPow(2, 32);
+            var lengthProperty = 'length'
+            var i, j;
+            var result = ''
+        
+            var words = [];
+            var asciiBitLength = ascii[lengthProperty] * 8;
+        
+            var hash = sha256.h = sha256.h || [];
+            var k = sha256.k = sha256.k || [];
+            var primeCounter = k[lengthProperty];
+        
+            var isComposite = {};
+            for (var candidate = 2; primeCounter < 64; candidate++) {
+                if (!isComposite[candidate]) {
+                    for (i = 0; i < 313; i += candidate) {
+                        isComposite[i] = candidate;
+                    }
+                    hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+                    k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+                }
+            }
+        
+            ascii += '\x80';
+            while (ascii[lengthProperty] % 64 - 56) ascii += '\x00';
+            for (i = 0; i < ascii[lengthProperty]; i++) {
+                j = ascii.charCodeAt(i);
+                if (j >> 8) return;
+                words[i >> 2] |= j << ((3 - i) % 4) * 8;
+            }
+            words[words[lengthProperty]] = ((asciiBitLength / maxWord) | 0);
+            words[words[lengthProperty]] = (asciiBitLength)
+        
+            for (j = 0; j < words[lengthProperty];) {
+                var w = words.slice(j, j += 16);
+                var oldHash = hash;
+        
+                hash = hash.slice(0, 8);
+        
+                for (i = 0; i < 64; i++) {
+                    var i2 = i + j;
+                    var w15 = w[i - 15], w2 = w[i - 2];
+        
+                    var a = hash[0], e = hash[4];
+                    var temp1 = hash[7]
+                        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+                        + ((e & hash[5]) ^ ((~e) & hash[6]))
+                        + k[i]
+                        + (w[i] = (i < 16) ? w[i] : (
+                                w[i - 16]
+                                + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+                                + w[i - 7]
+                                + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+                            ) | 0
+                        );
+        
+                    var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+                        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+        
+                    hash = [(temp1 + temp2) | 0].concat(hash);
+                    hash[4] = (hash[4] + temp1) | 0;
+                }
+        
+                for (i = 0; i < 8; i++) {
+                    hash[i] = (hash[i] + oldHash[i]) | 0;
+                }
+            }
+        
+            for (i = 0; i < 8; i++) {
+                for (j = 3; j + 1; j--) {
+                    var b = (hash[i] >> (j * 8)) & 255;
+                    result += ((b < 16) ? 0 : '') + b.toString(16);
+                }
+            }
+            return result;
+        };
 
-        async function hashNumber(number) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(number);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        function hashCSV() {
+            var fileInput = document.getElementById('fileInput');
+            var file = fileInput.files[0];
 
-        function hashNumbersFromFile() {
-            const fileInput = document.getElementById('fileInput');
-            if (!fileInput.files.length) {
+            if (!file) {
                 alert('Please select a CSV file.');
                 return;
             }
 
-            const file = fileInput.files[0];
-            const hashedNumbers = [];
-            const hashedNumbersList = document.getElementById('hashedNumbersList');
-            hashedNumbersList.innerHTML = '';
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                var csv = event.target.result;
+                var lines = csv.split(/\r\n|\n/);
+                var hashedValues = [];
 
-            Papa.parse(file, {
-                header: false,
-                dynamicTyping: true,
-                skipEmptyLines: true,
-                step: function(row, parser) {
-                    parser.pause();
-                    const number = row.data[0].toString().trim();
-                    if (number) {
-                        hashNumber(number).then(hashHex => {
-                            hashedNumbers.push({ number, hashHex });
-
-                            const listItem = document.createElement('li');
-                            listItem.innerText = `${number}: ${hashHex}`;
-                            hashedNumbersList.appendChild(listItem);
-
-                            parser.resume();
-                        });
-                    } else {
-                        parser.resume();
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (line) {
+                        var hashedValue = sha256(line);
+                        hashedValues.push(hashedValue);
                     }
-                },
-                complete: function() {
-                    const csvContent = "data:text/csv;charset=utf-8,"
-                        + hashedNumbers.map(e => `${e.number},${e.hashHex}`).join('\n');
-
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", "hashed_numbers.csv");
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
                 }
-            });
+
+                displayHashedValues(hashedValues);
+            };
+
+            reader.readAsText(file);
         }
 
-        function hashWordsFromFile() {
-            const fileInput = document.getElementById('wordsFileInput');
-            if (!fileInput.files.length) {
+        function displayHashedValues(values) {
+            var hashedValuesElement = document.getElementById('hashedValues');
+            hashedValuesElement.innerHTML = '';
+
+            values.forEach(function(value) {
+                var li = document.createElement('li');
+                li.textContent = value;
+                hashedValuesElement.appendChild(li);
+            });
+
+            // Show download link for hashed CSV
+            var downloadLink = document.getElementById('downloadLink');
+            downloadLink.setAttribute('href', makeCSVDownloadLink(values));
+            downloadLink.setAttribute('download', 'hashed_values.csv');
+            downloadLink.style.display = 'block';
+            downloadLink.textContent = 'Download Hashed CSV';
+        }
+
+        function makeCSVDownloadLink(values) {
+            var csvContent = 'data:text/csv;charset=utf-8,\n';
+            values.forEach(function(value) {
+                csvContent += value + '\n';
+            });
+            return encodeURI(csvContent);
+        }
+        function hashCSV() {
+            var fileInput = document.getElementById('fileInput');
+            var file = fileInput.files[0];
+
+            if (!file) {
                 alert('Please select a CSV file.');
                 return;
             }
 
-            const file = fileInput.files[0];
-            const results = [];
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                var csv = event.target.result;
+                var lines = csv.split(/\r\n|\n/);
+                var hashedValues = [];
 
-            Papa.parse(file, {
-                header: false,
-                dynamicTyping: true,
-                skipEmptyLines: true,
-                step: function(row, parser) {
-                    parser.pause();
-                    const word = row.data[0].toString().trim();
-                    if (word) {
-                        hashNumber(word).then(hashHex => {
-                            results.push({ word, hashHex });
-                            parser.resume();
-                        });
-                    } else {
-                        parser.resume();
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (line) {
+                        var hashedValue = sha256(line);
+                        hashedValues.push(hashedValue);
                     }
-                },
-                complete: function() {
-                    const csvContent = "data:text/csv;charset=utf-8,"
-                        + results.map(e => `${e.word},${e.hashHex}`).join('\n');
-
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", "hashed_words.csv");
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
                 }
+
+                downloadHashedCSV(hashedValues);
+            };
+
+            reader.readAsText(file);
+        }
+
+        function downloadHashedCSV(hashedValues) {
+            var csvContent = 'data:text/csv;charset=utf-8,\n';
+            hashedValues.forEach(function(value) {
+                csvContent += value + '\n';
             });
+
+            var encodedUri = encodeURI(csvContent);
+            var downloadLink = document.getElementById('downloadLink');
+            downloadLink.setAttribute('href', encodedUri);
+            downloadLink.setAttribute('download', 'hashed_values.csv');
+            downloadLink.style.display = 'block';
+            downloadLink.textContent = 'Download Hashed CSV';
+            downloadLink.click(); // Automatically initiates download
         }
     </script>
 </body>
